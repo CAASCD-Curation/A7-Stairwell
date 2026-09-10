@@ -1,0 +1,9 @@
+{
+  "name": "stairwell-jianjian",
+  "version": "3.0.0",
+  "private": true,
+  "description": "stairwell index 预览项目",
+  "scripts": {
+    "dev": "node server.js"
+  }
+}
