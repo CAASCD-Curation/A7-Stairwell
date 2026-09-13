@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>楼梯间 STAIRWELL · 垂直的过渡空间</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Oswald:wght@200;300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f4ede4;
+    --ink: #202020;
+    --ink-soft: #6a655f;
+    --red: #da0000;
+    --hairline: rgba(32, 32, 32, 0.18);
+    --serif: "Cormorant Garamond", "Songti SC", "STSong", serif;
+    --sans: "Oswald", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    -webkit-font-smoothing: antialiased;
+  }
+  canvas#stage { position: fixed; inset: 0; z-index: 0; display: block; }
+
+  /* 极轻的边缘压暗，让视线聚到梯井 */
+  .vignette {
+    position: fixed; inset: 0; z-index: 2; pointer-events: none;
+    background: radial-gradient(ellipse 90% 85% at 50% 48%,
+      rgba(0,0,0,0) 62%, rgba(32,30,28,0.10) 100%);
+  }
+
+  /* ===== 顶部信息条 ===== */
+  header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 26px 4vw; pointer-events: none;
+    opacity: 0; transition: opacity 1.2s ease 0.2s;
+  }
+  body.ready header { opacity: 1; }
+  header .brand { font-size: 17px; font-weight: 500; letter-spacing: 0.14em; }
+  header .brand em { font-style: italic; font-weight: 300; }
+  header .brand span {
+    display: block; margin-top: 4px;
+    font-family: var(--sans); font-weight: 200; font-size: 9px;
+    letter-spacing: 0.42em; color: var(--ink-soft); text-transform: uppercase;
+  }
+  header .floor {
+    font-family: var(--sans); font-weight: 200; font-size: 11px;
+    letter-spacing: 0.3em; color: var(--ink-soft); text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
+  }
+  header .floor b {
+    font-family: var(--serif); font-style: italic; font-weight: 300;
+    font-size: 22px; color: var(--ink); letter-spacing: 0;
+  }
+  header .floor b i { font-style: italic; color: var(--red); }
+
+  /* ===== 底部进度 ===== */
+  #progress {
+    position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%);
+    z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 12px;
+    pointer-events: none; opacity: 0; transition: opacity 1.2s ease 0.4s;
+  }
+  body.ready #progress { opacity: 1; }
+  #progress .track { width: 148px; height: 1px; background: var(--hairline); position: relative; }
+  #progress .fill {
+    position: absolute; left: 0; top: -0.5px; height: 2px; width: 0%;
+    background: var(--red);
+  }
+  #progress .read {
+    font-family: var(--sans); font-weight: 200; font-size: 9px;
+    letter-spacing: 0.4em; color: var(--ink-soft); text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ===== 开场遮罩 ===== */
+  #intro {
+    position: fixed; inset: 0; z-index: 40;
+    background: var(--paper);
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    transition: opacity 1.1s ease, visibility 1.1s;
+  }
+  #intro.gone { opacity: 0; visibility: hidden; pointer-events: none; }
+  #intro .kicker {
+    font-family: var(--sans); font-weight: 200; font-size: 10px;
+    letter-spacing: 0.52em; color: var(--red); text-transform: uppercase;
+    margin-bottom: 30px; opacity: 0; transition: opacity 1s ease 0.3s;
+  }
+  #intro h1 {
+    font-weight: 400; font-size: clamp(40px, 7vw, 88px);
+    letter-spacing: 0.22em; line-height: 1.1; text-indent: 0.22em;
+    opacity: 0; transform: translateY(18px);
+    transition: opacity 1.1s cubic-bezier(.2,.8,.2,1) 0.55s, transform 1.1s cubic-bezier(.2,.8,.2,1) 0.55s;
+  }
+  #intro .en {
+    margin-top: 18px;
+    font-style: italic; font-weight: 300; font-size: clamp(15px, 1.6vw, 20px);
+    color: var(--ink-soft); letter-spacing: 0.12em;
+    opacity: 0; transition: opacity 1s ease 0.9s;
+  }
+  #intro .rule { width: 44px; height: 1px; background: var(--hairline); margin-top: 34px;
+    opacity: 0; transition: opacity 1s ease 1.1s; }
+  #intro .hint {
+    margin-top: 30px;
+    font-family: var(--sans); font-weight: 200; font-size: 10px;
+    letter-spacing: 0.42em; color: var(--ink-soft); text-transform: uppercase;
+    opacity: 0; transition: opacity 1s ease 1.3s;
+  }
+  #intro.on .kicker, #intro.on h1, #intro.on .en, #intro.on .rule { opacity: 1; transform: none; }
+  #intro.on .hint { opacity: 1; animation: bob 2.4s ease-in-out 1.6s infinite; }
+  @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
+
+  @media (max-width: 720px) {
+    header { padding: 20px 6vw; }
+    #progress { bottom: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+<div class="vignette"></div>
+
+<header>
+  <div class="brand">
+    楼梯间 <em>Stairwell</em>
+    <span>A Vertical In-Between</span>
+  </div>
+  <div class="floor"><b id="floorNo"><i>F1</i></b>&ensp;/&ensp;F4</div>
+</header>
+
+<div id="progress">
+  <div class="read" id="readout">ASCENT — 000</div>
+  <div class="track"><div class="fill" id="fill"></div></div>
+</div>
+
+<div id="intro">
+  <div class="kicker">Transition · Ascent · Light</div>
+  <h1>楼 梯 间</h1>
+  <div class="en">the space between floors, the pause between lives</div>
+  <div class="rule"></div>
+  <div class="hint">滚动 · 开始上升</div>
+</div>
+
+<script>
+/* ============================================================
+   极简楼梯间 · Minimal Stairwell
+   - 双跑折梯 × 4 层，中央梯井贯通
+   - 滚动驱动镜头沿梯井上升，收尾仰望天窗
+============================================================ */
+
+/* ---------- 建筑常量 ---------- */
+const LEVELS   = 4;        // 层数
+const FLOOR_H  = 3.4;      // 层高
+const SHAFT_X  = 2.6;      // 井道半宽（x）
+const SHAFT_Z  = 1.5;      // 井道半深（z）
+const FLIGHT_Z = 0.95;     // 梯段中心 z（梯井留空 z∈[-0.4,0.4]）
+const FLIGHT_W = 1.1;      // 梯段宽
+const RUN_X    = 1.6;      // 梯段半长（x ∈ [-1.6,1.6]）
+const STEPS    = 10;       // 每跑踏步数
+const RISE     = FLOOR_H / 2 / STEPS;         // 0.17
+const TREAD    = (RUN_X * 2) / STEPS;         // 0.32
+const TOP_Y    = LEVELS * FLOOR_H;            // 13.6
+const WALL_TOP = TOP_Y + 1.8;                 // 女儿墙高度
+const SKY_Y    = WALL_TOP + 0.05;             // 天窗
+
+/* ---------- 滚动状态（虚拟滚动 → 平滑进度） ---------- */
+const vs = { p: 0, target: 0, touchY: null };
+const clamp01 = v => Math.max(0, Math.min(1, v));
+
+window.addEventListener("wheel", e => {
+  if (window.__lock) return;
+  let d = e.deltaY;
+  if (e.deltaMode === 1) d *= 33;
+  vs.target = clamp01(vs.target + d * 0.0011);
+}, { passive: true });
+
+window.addEventListener("touchstart", e => { vs.touchY = e.targetTouches[0].pageY; }, { passive: true });
+window.addEventListener("touchmove",  e => {
+  if (vs.touchY === null || window.__lock) return;
+  const y = e.targetTouches[0].pageY;
+  vs.target = clamp01(vs.target + (vs.touchY - y) * 0.0028);
+  vs.touchY = y;
+}, { passive: true });
+window.addEventListener("touchend", () => { vs.touchY = null; }, { passive: true });
+
+/* 测试/外部控制钩子 */
+window.__setP = v => { vs.target = vs.p = clamp01(v); };
+/* ---------- Three.js 基础 ---------- */
+const canvas = document.getElementById("stage");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0xf4ede4, 1);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.92;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf4ede4);
+scene.fog = new THREE.Fog(0xf4ede4, 9, 27);   // 远处楼层没入光里，拉出纵深
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.05, 120);
+
+/* ---------- 材质 ---------- */
+const wallMat  = new THREE.MeshStandardMaterial({ color: 0xefeadf, roughness: 0.96, metalness: 0 });
+const slabMat  = new THREE.MeshStandardMaterial({ color: 0xcfc9be, roughness: 0.9,  metalness: 0 });
+const railMat  = new THREE.MeshStandardMaterial({ color: 0x2a2723, roughness: 0.5,  metalness: 0.55 });
+const doorMat  = new THREE.MeshStandardMaterial({ color: 0xdcd4c5, roughness: 0.85, metalness: 0 });
+const glowMat  = new THREE.MeshBasicMaterial({ color: 0xfff9ec });
+const frameMat = new THREE.MeshStandardMaterial({ color: 0x8a8378, roughness: 0.8, metalness: 0.1 });
+
+/* ---------- 灯光 ---------- */
+scene.add(new THREE.HemisphereLight(0xfffaf0, 0xcfc7ba, 0.62));
+
+const sun = new THREE.DirectionalLight(0xfff1dc, 1.8);
+sun.position.set(14, 20, 7);
+sun.target.position.set(0, TOP_Y / 2, 0);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -10; sun.shadow.camera.right = 10;
+sun.shadow.camera.top = 14;   sun.shadow.camera.bottom = -6;
+sun.shadow.camera.near = 2;   sun.shadow.camera.far = 50;
+sun.shadow.bias = -0.0004;
+scene.add(sun); scene.add(sun.target);
+
+const skyGlow = new THREE.PointLight(0xfff6e6, 0.55, 22, 1.6);
+skyGlow.position.set(0, WALL_TOP - 0.4, 0);
+scene.add(skyGlow);
+
+/* ---------- 工具：两点之间的圆杆 ---------- */
+const UP = new THREE.Vector3(0, 1, 0);
+function bar(x1, y1, z1, x2, y2, z2, r, mat) {
+  const a = new THREE.Vector3(x1, y1, z1), b = new THREE.Vector3(x2, y2, z2);
+  const d = new THREE.Vector3().subVectors(b, a);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 8), mat);
+  m.position.copy(a).addScaledVector(d, 0.5);
+  m.quaternion.setFromUnitVectors(UP, d.normalize());
+  m.castShadow = true;
+  return m;
+}
+function box(w, h, d, mat, x, y, z, castShadow = true) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  m.castShadow = castShadow;
+  m.receiveShadow = true;
+  return m;
+}
+
+/* ---------- 墙体（不投影，保持“剖面模型”般通透的光） ---------- */
+const walls = new THREE.Group();
+walls.add(box(0.12, WALL_TOP, SHAFT_Z * 2 + 0.24, wallMat,  SHAFT_X + 0.06, WALL_TOP / 2, 0, false));
+walls.add(box(0.12, WALL_TOP, SHAFT_Z * 2 + 0.24, wallMat, -SHAFT_X - 0.06, WALL_TOP / 2, 0, false));
+walls.add(box(SHAFT_X * 2 + 0.24, WALL_TOP, 0.12, wallMat, 0, WALL_TOP / 2,  SHAFT_Z + 0.06, false));
+walls.add(box(SHAFT_X * 2 + 0.24, WALL_TOP, 0.12, wallMat, 0, WALL_TOP / 2, -SHAFT_Z - 0.06, false));
+scene.add(walls);
+
+/* 地面 + 顶面（天窗留空中央梯井条带） */
+scene.add(box(SHAFT_X * 2 + 0.2, 0.2, SHAFT_Z * 2 + 0.2, slabMat, 0, -0.1, 0));
+scene.add(box(SHAFT_X * 2 + 0.2, 0.15, 1.12, slabMat, 0, SKY_Y, -0.955));
+scene.add(box(SHAFT_X * 2 + 0.2, 0.15, 1.12, slabMat, 0, SKY_Y,  0.955));
+/* 天窗：发光面 + 拔光井侧壁（让光有“深度”） */
+const WELL_H = 0.95;
+const skylight = new THREE.Mesh(new THREE.PlaneGeometry(SHAFT_X * 2, 0.82), glowMat);
+skylight.rotation.x = Math.PI / 2;
+skylight.position.set(0, SKY_Y + WELL_H, 0);
+scene.add(skylight);
+scene.add(box(SHAFT_X * 2 + 0.12, WELL_H, 0.06, wallMat, 0, SKY_Y + WELL_H / 2, -0.43, false));
+scene.add(box(SHAFT_X * 2 + 0.12, WELL_H, 0.06, wallMat, 0, SKY_Y + WELL_H / 2,  0.43, false));
+scene.add(box(0.06, WELL_H, 0.92, wallMat, -SHAFT_X - 0.03, SKY_Y + WELL_H / 2, 0, false));
+scene.add(box(0.06, WELL_H, 0.92, wallMat,  SHAFT_X + 0.03, SKY_Y + WELL_H / 2, 0, false));
+
+/* ---------- 楼梯生成 ---------- */
+const stair = new THREE.Group();
+scene.add(stair);
+
+function flight(yBase, dir /* +1: 沿+x 上行, -1: 沿-x 上行 */, zCenter) {
+  for (let i = 0; i < STEPS; i++) {
+    const x = dir > 0
+      ? -RUN_X + i * TREAD + TREAD / 2
+      :  RUN_X - i * TREAD - TREAD / 2;
+    const yTop = yBase + (i + 1) * RISE;
+    stair.add(box(TREAD + 0.02, RISE, FLIGHT_W, slabMat, x, yTop - RISE / 2, zCenter));
+    /* 梯井侧栏杆立柱（每隔一步） */
+    if (i % 2 === 0) {
+      const zEdge = zCenter - Math.sign(zCenter) * (FLIGHT_W / 2 - 0.02);
+      stair.add(bar(x, yTop, zEdge, x, yTop + 0.92, zEdge, 0.006, railMat));
+    }
+  }
+  /* 梯井侧扶手（斜杆） */
+  const zEdge = zCenter - Math.sign(zCenter) * (FLIGHT_W / 2 - 0.02);
+  const x0 = dir > 0 ? -RUN_X :  RUN_X;
+  const x1 = dir > 0 ?  RUN_X : -RUN_X;
+  stair.add(bar(x0, yBase + 0.92, zEdge, x1, yBase + STEPS * RISE + 0.92, zEdge, 0.019, railMat));
+}
+
+function landing(cx, yTop) {
+  stair.add(box(SHAFT_X - RUN_X + 0.02, RISE, SHAFT_Z * 2, slabMat, cx, yTop - RISE / 2, 0));
+  /* 平台靠梯井一侧的护栏（横杆 + 立柱） */
+  const xEdge = cx - Math.sign(cx) * ((SHAFT_X - RUN_X) / 2 - 0.02);
+  const zA = -(FLIGHT_Z - FLIGHT_W / 2) + 0.42; // ≈ -0.38
+  const zB = -zA;
+  stair.add(bar(xEdge, yTop + 0.92, zA, xEdge, yTop + 0.92, zB, 0.019, railMat));
+  stair.add(bar(xEdge, yTop, zA, xEdge, yTop + 0.92, zA, 0.006, railMat));
+  stair.add(bar(xEdge, yTop, 0,  xEdge, yTop + 0.92, 0,  0.006, railMat));
+  stair.add(bar(xEdge, yTop, zB, xEdge, yTop + 0.92, zB, 0.006, railMat));
+}
+
+for (let k = 0; k < LEVELS; k++) {
+  const y0 = k * FLOOR_H;
+  flight(y0,               +1, -FLIGHT_Z);   // 南段：沿 +x 上至半平台
+  landing( (RUN_X + SHAFT_X) / 2, y0 + FLOOR_H / 2);   // 东平台
+  flight(y0 + FLOOR_H / 2, -1,  FLIGHT_Z);   // 北段：沿 -x 上至楼层平台
+  landing(-(RUN_X + SHAFT_X) / 2, y0 + FLOOR_H);       // 西平台（即本层楼面）
+}
+/* 顶层东平台补齐，让顶部对称呼应 */
+landing((RUN_X + SHAFT_X) / 2, TOP_Y);
+
+/* ---------- 每层：发光磨砂窗（东墙） + 入户门（西墙） ---------- */
+function window_(yCenter) {
+  const g = new THREE.Group();
+  const w = 1.5, h = 1.9;
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(w, h), glowMat);
+  glow.rotation.y = -Math.PI / 2;
+  glow.position.set(SHAFT_X - 0.01, yCenter, 0);
+  g.add(glow);
+  /* 极简边框 + 十字梃 */
+  const t = 0.045, dep = 0.05, x = SHAFT_X - 0.035;
+  g.add(box(dep, t, w + t * 2, frameMat, x, yCenter + h / 2, 0));
+  g.add(box(dep, t, w + t * 2, frameMat, x, yCenter - h / 2, 0));
+  g.add(box(dep, h, t, frameMat, x, yCenter, -w / 2));
+  g.add(box(dep, h, t, frameMat, x, yCenter,  w / 2));
+  g.add(box(dep, h, t * 0.6, frameMat, x, yCenter, 0));
+  g.add(box(dep, t * 0.6, w, frameMat, x, yCenter, 0));
+  return g;
+}
+function door_(yFloor) {
+  const g = new THREE.Group();
+  const w = 0.96, h = 2.1, x = -SHAFT_X + 0.02;
+  const slab = box(0.05, h, w, doorMat, x, yFloor + h / 2, 0);
+  g.add(slab);
+  /* 门套细线 */
+  const t = 0.05;
+  g.add(box(0.07, t, w + t * 2, frameMat, x + 0.005, yFloor + h + t / 2, 0));
+  g.add(box(0.07, h, t, frameMat, x + 0.005, yFloor + h / 2, -w / 2 - t / 2));
+  g.add(box(0.07, h, t, frameMat, x + 0.005, yFloor + h / 2,  w / 2 + t / 2));
+  /* 拉手 */
+  g.add(box(0.03, 0.16, 0.03, railMat, x + 0.06, yFloor + 1.02, w / 2 - 0.09));
+  return g;
+}
+for (let k = 0; k < LEVELS; k++) {
+  scene.add(window_(k * FLOOR_H + FLOOR_H / 2 + 1.15));   // 半平台窗外
+  scene.add(door_(k * FLOOR_H + (k === 0 ? 0 : 0)));      // 西门（地面层门落在 y=0）
+}
+scene.add(window_(TOP_Y + 1.0));                          // 顶层高窗
+
+/* ---------- 梯井浮尘 ---------- */
+const DUST_N = 260;
+const dustGeo = new THREE.BufferGeometry();
+const dustPos = new Float32Array(DUST_N * 3);
+for (let i = 0; i < DUST_N; i++) {
+  dustPos[i * 3]     = (Math.random() - 0.5) * 3.6;
+  dustPos[i * 3 + 1] = Math.random() * WALL_TOP;
+  dustPos[i * 3 + 2] = (Math.random() - 0.5) * 1.6;
+}
+dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
+const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({
+  color: 0xffeec9, size: 0.015, transparent: true, opacity: 0.32,
+  depthWrite: false, sizeAttenuation: true
+}));
+scene.add(dust);
+
+/* ---------- 运镜：手工关键帧 → Catmull-Rom 平滑轨道 ---------- */
+const posKeys = [], lookKeys = [];
+posKeys.push([0.1, 1.1, 0.1]);   lookKeys.push([0.4, 12.0, -0.3]);   // 开场：井底仰望，穿透四层的梯井
+for (let k = 0; k < LEVELS; k++) {
+  const y = k * FLOOR_H;
+  posKeys.push([-0.4, y + 1.5,  0.3]);  lookKeys.push([ 2.0, y + 2.4, -0.9]);   // 井心斜望南段
+  posKeys.push([0.9,  y + 2.6,  0.25]); lookKeys.push([-1.9, y + 2.0,  0.9]);   // 回望对角 · 北段踏步层叠
+  posKeys.push([0.55, y + 2.95, 0.25]); lookKeys.push([ 2.8, y + 2.35, 0.0]);   // 东平台 · 斜望光窗与平台
+  posKeys.push([0.2,  y + 3.8,  0.25]); lookKeys.push([-0.3, y + 7.2, -0.5]);   // 抬头 · 看穿上方层层梯段
+  posKeys.push([-1.25,y + 4.75, 0.15]); lookKeys.push([-2.8, y + 3.7,  0.0]);   // 西平台 · 门前
+}
+posKeys.push([0.2, TOP_Y + 1.35, 0.25]); lookKeys.push([-0.3, SKY_Y + 1.5, -0.2]); // 登顶 · 斜仰天窗光井
+posKeys.push([0.0,  TOP_Y + 1.05, 0.0]); lookKeys.push([0.25, 0.5, 0.1]);          // 收尾：俯望来路，四层梯井直落地面
+
+const posCurve  = new THREE.CatmullRomCurve3(posKeys.map(k => new THREE.Vector3(...k)), false, "centripetal");
+const lookCurve = new THREE.CatmullRomCurve3(lookKeys.map(k => new THREE.Vector3(...k)), false, "centripetal");
+
+/* ---------- 交互视差 ---------- */
+let mouseX = 0, mouseY = 0;
+window.addEventListener("mousemove", e => {
+  mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+  mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+}, { passive: true });
+
+/* ---------- UI ---------- */
+const introEl  = document.getElementById("intro");
+const fillEl   = document.getElementById("fill");
+const readEl   = document.getElementById("readout");
+const floorEl  = document.getElementById("floorNo");
+let introGone = false;
+let lastFloor = "";
+
+setTimeout(() => introEl.classList.add("on"), 120);
+
+/* ---------- 渲染循环 ---------- */
+const vPos = new THREE.Vector3(), vLook = new THREE.Vector3();
+const clock = new THREE.Clock();
+
+function tick() {
+  requestAnimationFrame(tick);
+  const t = clock.getElapsedTime();
+
+  /* 平滑逼近目标进度 */
+  vs.p += (vs.target - vs.p) * 0.045;
+  if (Math.abs(vs.target - vs.p) < 0.0004) vs.p = vs.target;
+
+  if (!introGone && vs.target > 0.004) {
+    introGone = true;
+    introEl.classList.add("gone");
+  }
+
+  posCurve.getPoint(vs.p, vPos);
+  lookCurve.getPoint(vs.p, vLook);
+
+  /* 呼吸感 + 鼠标视差（落在 look 目标上，幅度极小） */
+  vPos.y += Math.sin(t * 0.6) * 0.012;
+  vLook.x += mouseX * 0.35;
+  vLook.y += -mouseY * 0.22 + Math.sin(t * 0.4) * 0.01;
+
+  camera.position.copy(vPos);
+  camera.lookAt(vLook);
+
+  /* 浮尘缓升 */
+  const arr = dustGeo.attributes.position.array;
+  for (let i = 0; i < DUST_N; i++) {
+    arr[i * 3 + 1] += 0.0012;
+    if (arr[i * 3 + 1] > WALL_TOP) arr[i * 3 + 1] = 0;
+  }
+  dustGeo.attributes.position.needsUpdate = true;
+
+  /* UI：进度 / 楼层 */
+  const pct = Math.round(vs.p * 100);
+  fillEl.style.width = pct + "%";
+  readEl.textContent = "ASCENT — " + String(pct).padStart(3, "0");
+  const fl = "F" + Math.max(1, Math.min(LEVELS, Math.floor(vPos.y / FLOOR_H) + 1));
+  if (fl !== lastFloor) { lastFloor = fl; floorEl.innerHTML = "<i>" + fl + "</i>"; }
+
+  renderer.render(scene, camera);
+}
+tick();
+document.body.classList.add("ready");
+
+/* 面板不可见时的自检截图钩子：渲染一帧并返回缩略 dataURL */
+window.__snap = function (w) {
+  renderer.render(scene, camera);
+  const cw = w || 640;
+  const ch = Math.round(cw * canvas.height / canvas.width);
+  const c2 = document.createElement("canvas");
+  c2.width = cw; c2.height = ch;
+  c2.getContext("2d").drawImage(canvas, 0, 0, cw, ch);
+  return c2.toDataURL("image/jpeg", 0.72);
+};
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
