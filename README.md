@@ -11,6 +11,7 @@
 ├── server.js                   # 本地静态服务器
 ├── package.json
 ├── img/                        # 网页使用的图片素材
+├── stairs-preview/             # 楼梯 3D 预览页面（demo / index / stairwell）
 ├── A7-excel-9.13/
 │   ├── 楼梯间调研文档 9.13.xlsx      # 调研文档（完整版，334MB，Git LFS）
 │   └── 楼梯间图片-webp格式/          # 162 张调研图片（webp）
