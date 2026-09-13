@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>梯井漫游 DEMO · Stairwell Fly-through</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root {
+    --paper: #f4ede4;
+    --ink: #202020;
+    --ink-soft: #55504b;
+    --rose: #c2a9a7;
+    --gold: #f4c890;
+    --red: #da0000;
+    --night: #0e101c;
+    --serif: "Cormorant Garamond", "Songti SC", serif;
+    --sans: "Oswald", "PingFang SC", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--red); color: var(--paper); }
+  canvas#bg3d { position: fixed; inset: 0; z-index: 0; display: block; }
+  .grain {
+    position: fixed; inset: 0; z-index: 3; pointer-events: none; opacity: 0.45;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.5 0 0 0 0 0.45 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ===== 逐词 intro 遮罩 ===== */
+  #intro {
+    position: fixed; inset: 0; z-index: 60;
+    background: var(--paper);
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    transition: opacity 0.9s ease, visibility 0.9s;
+  }
+  #intro.gone { opacity: 0; visibility: hidden; pointer-events: none; }
+  #intro .kicker {
+    font-family: var(--sans); font-weight: 300;
+    letter-spacing: 0.5em; font-size: 11px;
+    color: var(--red); text-transform: uppercase;
+    margin-bottom: 34px; opacity: 0;
+    transition: opacity 0.8s;
+  }
+  #intro .kicker.on { opacity: 1; }
+  #intro .words { display: flex; gap: 0.35em; flex-wrap: wrap; justify-content: center; padding: 0 20px; }
+  #intro .w {
+    font-weight: 400;
+    font-size: clamp(34px, 7vw, 84px);
+    line-height: 1.15;
+    opacity: 0;
+    transform: translateY(26px) rotate(1.5deg);
+    filter: blur(6px);
+    transition: opacity 0.7s cubic-bezier(.2,.8,.2,1), transform 0.7s cubic-bezier(.2,.8,.2,1), filter 0.7s;
+  }
+  #intro .w.on { opacity: 1; transform: none; filter: blur(0); }
+  #intro .w.em { font-style: italic; color: var(--red); }
+  #intro .hint {
+    margin-top: 46px;
+    font-family: var(--sans); font-weight: 300;
+    font-size: 11px; letter-spacing: 0.4em;
+    color: var(--ink-soft); text-transform: uppercase;
+    opacity: 0; transition: opacity 0.8s; cursor: pointer;
+  }
+  #intro .hint.on { opacity: 1; animation: bob 2.2s ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
+
+  /* ===== 楼层标题（逐词浮现） ===== */
+  #floorTitle {
+    position: fixed; left: 6vw; top: 50%;
+    transform: translateY(-50%);
+    z-index: 10; pointer-events: none;
+  }
+  #floorTitle .no {
+    font-style: italic; font-weight: 300;
+    font-size: clamp(46px, 7vw, 92px);
+    line-height: 0.9;
+    color: transparent;
+    -webkit-text-stroke: 1px var(--rose);
+  }
+  #floorTitle .words { display: flex; gap: 0.3em; margin-top: 10px; }
+  #floorTitle .w {
+    font-size: clamp(26px, 4vw, 52px);
+    font-weight: 500; letter-spacing: 0.06em;
+    opacity: 0; transform: translateY(18px); filter: blur(4px);
+    transition: opacity 0.55s cubic-bezier(.2,.8,.2,1), transform 0.55s cubic-bezier(.2,.8,.2,1), filter 0.55s;
+  }
+  #floorTitle .w.on { opacity: 1; transform: none; filter: blur(0); }
+  #floorTitle .en {
+    margin-top: 14px;
+    font-family: var(--sans); font-weight: 200;
+    font-size: 11px; letter-spacing: 0.36em;
+    color: var(--ink-soft); text-transform: uppercase;
+    opacity: 0; transition: opacity 0.6s 0.4s;
+  }
+  #floorTitle .en.on { opacity: 1; }
+
+  /* ===== 电梯 HUD ===== */
+  #hud {
+    position: fixed; right: 22px; top: 50%;
+    transform: translateY(-50%);
+    z-index: 20;
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 16px 8px;
+    background: rgba(255,253,249,0.72);
+    border: 1px solid rgba(32,32,32,0.14);
+    border-radius: 999px;
+    backdrop-filter: blur(10px);
+  }
+  #hud button {
+    appearance: none; border: none; background: none; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 9px 13px; color: var(--ink-soft);
+    position: relative; transition: color 0.25s;
+  }
+  #hud button + button::before {
+    content: ""; position: absolute; top: 0; left: 50%;
+    width: 16px; height: 1px; transform: translateX(-50%);
+    background: rgba(32,32,32,0.14);
+  }
+  #hud button .no { font-family: var(--serif); font-style: italic; font-size: 17px; line-height: 1; }
+  #hud button .lamp {
+    width: 5px; height: 5px; border-radius: 50%;
+    border: 1px solid var(--rose); transition: all 0.3s;
+  }
+  #hud button:hover { color: var(--red); }
+  #hud button.active { color: var(--ink); }
+  #hud button.active .no { color: var(--red); }
+  #hud button.active .lamp { background: var(--red); border-color: var(--red); box-shadow: 0 0 9px rgba(218,0,0,0.55); }
+  #hud button.flying .lamp { animation: blink 0.5s infinite; }
+  @keyframes blink { 50% { background: var(--gold); border-color: var(--gold); box-shadow: 0 0 9px var(--gold); } }
+
+  /* ===== 深度进度条 ===== */
+  #depthBar {
+    position: fixed; left: 6vw; bottom: 5vh; z-index: 20;
+    display: flex; align-items: center; gap: 14px;
+    font-family: var(--sans); font-weight: 300;
+    font-size: 10px; letter-spacing: 0.3em;
+    color: var(--ink-soft); text-transform: uppercase;
+  }
+  #depthBar .track {
+    width: 150px; height: 1px;
+    background: rgba(32,32,32,0.2);
+    position: relative;
+  }
+  #depthBar .fill {
+    position: absolute; left: 0; top: -0.5px;
+    height: 2px; width: 0%;
+    background: var(--red);
+    transition: width 0.1s linear;
+  }
+  #depthBar .dot {
+    position: absolute; top: -2.5px;
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--rose);
+    transform: translateX(-50%);
+  }
+  #depthReadout { font-variant-numeric: tabular-nums; }
+
+  /* ===== 3D 热点 ===== */
+  .hotspot {
+    position: fixed; z-index: 15;
+    transform: translate(-50%, -50%);
+    cursor: pointer; pointer-events: none;
+    opacity: 0; transition: opacity 0.3s;
+    text-align: center;
+  }
+  .hotspot.show { opacity: 1; pointer-events: auto; }
+  .hotspot .pin {
+    width: 34px; height: 34px; margin: 0 auto;
+    border-radius: 50%;
+    border: 1px solid var(--red);
+    background: rgba(255,253,249,0.85);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--sans); font-size: 10px;
+    color: var(--red); letter-spacing: 0.05em;
+    box-shadow: 0 0 0 0 rgba(218,0,0,0.3);
+    animation: pulse 2.4s infinite;
+    transition: transform 0.25s, background 0.25s, color 0.25s;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(218,0,0,0.25); }
+    70% { box-shadow: 0 0 0 14px rgba(218,0,0,0); }
+    100% { box-shadow: 0 0 0 0 rgba(218,0,0,0); }
+  }
+  .hotspot:hover .pin { background: var(--red); color: var(--paper); transform: scale(1.12); }
+  .hotspot .label {
+    margin-top: 6px;
+    font-family: var(--sans); font-weight: 300;
+    font-size: 10px; letter-spacing: 0.18em;
+    color: var(--ink);
+    background: rgba(255,253,249,0.8);
+    padding: 2px 8px; border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  /* ===== 案例详情面板 ===== */
+  #panel {
+    position: fixed; right: 90px; top: 50%;
+    transform: translateY(-50%) translateX(24px);
+    z-index: 30; width: min(340px, 78vw);
+    padding: 28px 26px 24px;
+    background: linear-gradient(165deg, #fffdf9, #f7efe6);
+    border: 1px solid rgba(32,32,32,0.12);
+    border-radius: 4px;
+    box-shadow: 0 26px 60px rgba(32,32,32,0.18);
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity 0.35s, transform 0.35s, visibility 0.35s;
+  }
+  #panel.show { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(-50%) translateX(0); }
+  #panel .close {
+    position: absolute; top: 10px; right: 12px;
+    border: none; background: none; cursor: pointer;
+    font-family: var(--sans); font-size: 14px; color: var(--ink-soft);
+  }
+  #panel .close:hover { color: var(--red); }
+  #panel .tags { display: flex; gap: 8px; margin-bottom: 14px; }
+  #panel .tag {
+    font-family: var(--sans); font-weight: 300;
+    font-size: 9.5px; letter-spacing: 0.2em; text-transform: uppercase;
+    padding: 4px 10px; border-radius: 999px;
+  }
+  #panel .tag.media { color: #8a6a3a; border: 1px solid rgba(244,200,144,0.9); background: rgba(244,200,144,0.22); }
+  #panel .tag.form { color: var(--red); border: 1px solid rgba(218,0,0,0.35); }
+  #panel h3 { font-size: 22px; font-weight: 500; margin-bottom: 6px; }
+  #panel .meta {
+    font-family: var(--sans); font-weight: 300; font-size: 11px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--ink-soft); margin-bottom: 14px;
+  }
+  #panel p { font-weight: 300; font-size: 14px; color: var(--ink-soft); }
+
+  /* ===== 转场遮幅 ===== */
+  #wipe {
+    position: fixed; inset: 0; z-index: 50; pointer-events: none;
+    background: linear-gradient(180deg, var(--paper) 49.6%, var(--night) 50.4%);
+    transform: scaleY(0);
+    transform-origin: center;
+  }
+
+  @media (max-width: 720px) {
+    #floorTitle { left: 5vw; }
+    #hud { right: 10px; }
+    #panel { right: 50%; transform: translateY(-50%) translateX(50%) translateX(24px); }
+    #panel.show { transform: translateY(-50%) translateX(50%); }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bg3d"></canvas>
+<div class="grain"></div>
+<div id="wipe"></div>
+
+<!-- 逐词 intro -->
+<div id="intro">
+  <div class="kicker" id="introKicker">Miu-Miu-Style · Demo Reel</div>
+  <div class="words" id="introWords">
+    <span class="w">一座</span><span class="w">我们</span><span class="w">共同</span><span class="w">下坠</span><span class="w em">的梯井</span>
+  </div>
+  <div class="hint" id="introHint">滚动 或 拨动电梯 · 开始下潜</div>
+</div>
+
+<!-- 楼层标题 -->
+<div id="floorTitle">
+  <div class="no" id="ftNo">GF</div>
+  <div class="words" id="ftWords"></div>
+  <div class="en" id="ftEn"></div>
+</div>
+
+<!-- 电梯 HUD -->
+<nav id="hud" aria-label="楼层导航"></nav>
+
+<!-- 深度进度 -->
+<div id="depthBar">
+  <span>Depth</span>
+  <div class="track" id="depthTrack"><div class="fill" id="depthFill"></div></div>
+  <span id="depthReadout">0.0 m</span>
+</div>
+
+<!-- 案例面板 -->
+<aside id="panel">
+  <button class="close" id="panelClose" aria-label="关闭">✕</button>
+  <div class="tags" id="panelTags"></div>
+  <h3 id="panelTitle"></h3>
+  <div class="meta" id="panelMeta"></div>
+  <p id="panelBlurb"></p>
+</aside>
+
+<script>
+/* ============================================================
+   数据
+============================================================ */
+const FLOORS = [
+  { id: "2F",  no: "2F",  name: ["形式", "与", "解构"], en: "Form & Deconstruction" },
+  { id: "1F",  no: "1F",  name: ["迷宫", "与", "视错觉"], en: "Maze & Optical Illusion" },
+  { id: "GF",  no: "GF",  name: ["社区", "与", "日常"], en: "Community & Everyday Life" },
+  { id: "B1F", no: "B1F", name: ["阶级", "与", "秩序"], en: "Class & Order" },
+  { id: "B2F", no: "B2F", name: ["心理", "与", "惊悚"], en: "Psychology & Suspense" }
+];
+
+const CASES = [
+  { no: "01", title: "《寄生虫》", author: "奉俊昊", year: "2019", media: "电影", form: "折梯", floor: 3, angle: 0.6,
+    blurb: "豪宅的长阶与半地下室的逼仄楼梯构成垂直阶级地图，一场暴雨让上升者沿台阶急速坠落。" },
+  { no: "02", title: "《小丑》狂欢台阶", author: "托德·菲利普斯", year: "2019", media: "电影", form: "折梯", floor: 3, angle: 2.4,
+    blurb: "从歌舞伎町台阶的舞蹈到厨房通道的俯拍长镜：台阶成为阶级倾覆与个人加冕的双重仪式场。" },
+  { no: "03", title: "九龙寨城「迷宫梯井」", author: "无名自建聚落", year: "1980s", media: "聚落/社会", form: "折梯", floor: 2, angle: 1.5,
+    blurb: "0.026 平方公里内五万人共用一套失控的垂直系统：铁梯、木梯与混凝土梯在黑暗中层层咬合。" },
+  { no: "04", title: "《盗梦空间》", author: "克里斯托弗·诺兰", year: "2010", media: "电影", form: "无限梯", floor: 1, angle: 0.2,
+    blurb: "彭罗斯阶梯被折叠进梦境：特工在循环上升的梯井中追逐，垂直方向成为可编程的迷宫。" },
+  { no: "05", title: "《相对性》", author: "M.C. 埃舍尔", year: "1953", media: "艺术", form: "无限梯", floor: 1, angle: 2.8,
+    blurb: "三组各自拥有重力的人物在三座楼梯的交界处错身而过——不可能建筑的视觉圣经。" },
+  { no: "06", title: "香波堡双螺旋楼梯", author: "达·芬奇（传）", year: "1519", media: "建筑", form: "螺旋梯", floor: 0, angle: 1.1,
+    blurb: "两条螺旋共轴交叠，同行者可在梯间窥见彼此却永不相逢——法兰西文艺复兴的空间机关。" },
+  { no: "07", title: "《下楼梯的裸女 No.2》", author: "马塞尔·杜尚", year: "1912", media: "艺术", form: "折梯", floor: 0, angle: 3.4,
+    blurb: "连续摄影式的动态叠加：裸体不再是肉身的描绘，而成为沿阶梯下降的运动轨迹本身。" },
+  { no: "08", title: "《后窗》消防梯", author: "阿尔弗雷德·希区柯克", year: "1954", media: "电影", form: "消防梯", floor: 4, angle: 1.9,
+    blurb: "格林威治村的消防梯是窥视者的通道，也是凶手潜入的垂直甬道——悬念在悬空的台阶上摇晃。" }
+];
+
+/* 几何常量 */
+const STEP_COUNT = 120;
+const RISE = 0.34;
+const ANGLE_STEP = 0.42;
+const SPAN = STEP_COUNT * RISE;      // 40.8
+const RADIUS = 4.6;
+const FLOOR_GAP = 36;                 // 每层深度间距
+const MAX_FALL = (FLOORS.length - 1) * FLOOR_GAP + 8;
+
+/* ============================================================
+   状态：虚拟滚动（wheel / touch 归一化 → 进度值）
+============================================================ */
+const vs = {
+  fall: 0,            // 当前深度（平滑后）
+  target: 0,          // 目标深度
+  flying: false,      // 相机飞行中（Miu Miu: isCamTransitioning）
+  flyFrom: 0, flyTo: 0, flyT: 0,
+  touchY: null
+};
+
+function clampFall(v) { return Math.max(0, Math.min(MAX_FALL, v)); }
+
+/* 滚轮：归一化 delta（借鉴 virtual-scroll 的思路） */
+window.addEventListener("wheel", function (e) {
+  if (vs.flying) return;
+  let d = e.deltaY;
+  if (e.deltaMode === 1) d *= 33;       // 行模式 → 像素
+  vs.target = clampFall(vs.target + d * 0.012);
+}, { passive: true });
+
+/* 触摸 */
+window.addEventListener("touchstart", function (e) {
+  vs.touchY = e.targetTouches[0].pageY;
+}, { passive: true });
+window.addEventListener("touchmove", function (e) {
+  if (vs.touchY === null || vs.flying) return;
+  const y = e.targetTouches[0].pageY;
+  vs.target = clampFall(vs.target + (vs.touchY - y) * 0.03);
+  vs.touchY = y;
+}, { passive: true });
+window.addEventListener("touchend", function () { vs.touchY = null; }, { passive: true });
+
+/* ============================================================
+   Three.js：无限梯井
+============================================================ */
+const canvas = document.getElementById("bg3d");
+let renderer, scene, camera, steps = [], column, helixOuter, helixInner, columnWire, dust;
+let mouseX = 0, mouseY = 0;
+
+(function initThree() {
+  if (typeof THREE === "undefined") return;
+  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0xf4ede4, 1);
+
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0xf4ede4, 0.045);
+
+  camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 200);
+  camera.position.set(0, 0, 11);
+
+  scene.add(new THREE.AmbientLight(0xfff2e0, 0.95));
+  const dir = new THREE.DirectionalLight(0xfff5ea, 1.1);
+  dir.position.set(6, 10, 8);
+  scene.add(dir);
+  const redPt = new THREE.PointLight(0xda0000, 1.1, 40);
+  redPt.position.set(-6, -2, 6);
+  scene.add(redPt);
+  const goldPt = new THREE.PointLight(0xf4c890, 1.2, 34);
+  goldPt.position.set(5, 4, 5);
+  scene.add(goldPt);
+
+  const world = new THREE.Group();
+  scene.add(world);
+  window.__world = world;
+
+  const stepGeo = new THREE.BoxGeometry(2.6, 0.09, 1.15);
+  const stepMat = new THREE.MeshStandardMaterial({
+    color: 0xd9c4b2, metalness: 0.55, roughness: 0.45,
+    emissive: 0xc2a9a7, emissiveIntensity: 0.12
+  });
+  const edgeMat = new THREE.MeshStandardMaterial({
+    color: 0xf7efe6, metalness: 0.6, roughness: 0.3,
+    emissive: 0xda0000, emissiveIntensity: 0.5
+  });
+  for (let i = 0; i < STEP_COUNT; i++) {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(stepGeo, stepMat));
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.04, 0.06), edgeMat);
+    edge.position.z = 0.58;
+    g.add(edge);
+    world.add(g);
+    steps.push({ g: g, i: i });
+  }
+
+  column = new THREE.LineSegments(
+    new THREE.WireframeGeometry(new THREE.CylinderGeometry(0.55, 0.55, SPAN, 12, 24, true)),
+    new THREE.LineBasicMaterial({ color: 0xc2a9a7, transparent: true, opacity: 0.3 })
+  );
+  world.add(column);
+
+  function makeHelix(radius, color, opacity, phase) {
+    const pts = [];
+    const total = 900;
+    for (let k = 0; k <= total; k++) {
+      const t = (k / total) * SPAN;
+      const a = (t / RISE) * ANGLE_STEP + phase;
+      pts.push(new THREE.Vector3(Math.cos(a) * radius, t - SPAN / 2, Math.sin(a) * radius));
+    }
+    return new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: opacity })
+    );
+  }
+  helixOuter = makeHelix(RADIUS + 0.2, 0xda0000, 0.32, 0);
+  helixInner = makeHelix(RADIUS - 1.9, 0xc2a9a7, 0.4, Math.PI);
+  columnWire = makeHelix(0.55, 0x8a7a72, 0.22, 0);
+  world.add(helixOuter); world.add(helixInner); world.add(columnWire);
+
+  const pCount = 420;
+  const pGeo = new THREE.BufferGeometry();
+  const pPos = new Float32Array(pCount * 3);
+  for (let k = 0; k < pCount; k++) {
+    pPos[k * 3] = (Math.random() - 0.5) * 24;
+    pPos[k * 3 + 1] = (Math.random() - 0.5) * SPAN;
+    pPos[k * 3 + 2] = (Math.random() - 0.5) * 24;
+  }
+  pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
+  dust = new THREE.Points(pGeo, new THREE.PointsMaterial({
+    color: 0xda0000, size: 0.06, transparent: true, opacity: 0.4
+  }));
+  world.add(dust);
+
+  window.addEventListener("mousemove", function (e) {
+    mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+    mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+  });
+  window.addEventListener("resize", function () {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+})();
+
+function mod(n, m) { return ((n % m) + m) % m; }
+
+/* ============================================================
+   楼层标题：逐词浮现（Miu Miu intro 式）
+============================================================ */
+const ftNo = document.getElementById("ftNo");
+const ftWords = document.getElementById("ftWords");
+const ftEn = document.getElementById("ftEn");
+let titleToken = 0;
+
+function setFloorTitle(idx) {
+  const f = FLOORS[idx];
+  const my = ++titleToken;
+  ftNo.textContent = f.no;
+  ftEn.classList.remove("on");
+  ftWords.innerHTML = "";
+  f.name.forEach(function (w) {
+    const s = document.createElement("span");
+    s.className = "w";
+    s.textContent = w;
+    ftWords.appendChild(s);
+  });
+  const ws = ftWords.querySelectorAll(".w");
+  ws.forEach(function (el, i) {
+    setTimeout(function () {
+      if (my !== titleToken) return;
+      el.classList.add("on");
+    }, 120 + i * 140);
+  });
+  setTimeout(function () {
+    if (my === titleToken) ftEn.classList.add("on");
+  }, 120 + ws.length * 140 + 150);
+}
+
+/* ============================================================
+   电梯 HUD + 相机飞行转场
+============================================================ */
+const hud = document.getElementById("hud");
+const wipe = document.getElementById("wipe");
+const hudBtns = [];
+
+FLOORS.forEach(function (f, idx) {
+  const b = document.createElement("button");
+  b.innerHTML = '<span class="no">' + f.no + '</span><span class="lamp"></span>';
+  b.addEventListener("click", function () { flyToFloor(idx); });
+  hud.appendChild(b);
+  hudBtns.push(b);
+});
+
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function flyToFloor(idx) {
+  if (vs.flying) return;
+  closePanel();
+  vs.flying = true;
+  vs.flyFrom = vs.fall;
+  vs.flyTo = clampFall(idx * FLOOR_GAP);
+  vs.flyT = 0;
+  hudBtns.forEach(function (b) { b.classList.add("flying"); });
+  /* 遮幅扫过（转场节奏感） */
+  wipe.style.transition = "transform 0.4s cubic-bezier(.6,0,.4,1)";
+  wipe.style.transform = "scaleY(1)";
+  setTimeout(function () {
+    wipe.style.transition = "transform 0.5s cubic-bezier(.6,0,.4,1)";
+    wipe.style.transform = "scaleY(0)";
+  }, 420);
+}
+
+let currentFloor = -1;
+function updateFloor() {
+  const idx = Math.max(0, Math.min(FLOORS.length - 1, Math.round(vs.fall / FLOOR_GAP)));
+  if (idx !== currentFloor) {
+    currentFloor = idx;
+    setFloorTitle(idx);
+    hudBtns.forEach(function (b, i) { b.classList.toggle("active", i === idx); });
+  }
+}
+
+/* ============================================================
+   热点：3D 锚点 → 屏幕投影（Miu Miu hotspot 简化版）
+============================================================ */
+const hotspots = CASES.map(function (c) {
+  const el = document.createElement("div");
+  el.className = "hotspot";
+  el.innerHTML = '<div class="pin">' + c.no + '</div><div class="label">' + c.title + '</div>';
+  el.addEventListener("click", function () { openPanel(c); });
+  document.body.appendChild(el);
+  return { c: c, el: el, v: new THREE.Vector3() };
+});
+
+const panel = document.getElementById("panel");
+function openPanel(c) {
+  document.getElementById("panelTags").innerHTML =
+    '<span class="tag media">' + c.media + '</span><span class="tag form">' + c.form + '</span>';
+  document.getElementById("panelTitle").textContent = c.title;
+  document.getElementById("panelMeta").textContent = c.author + " · " + c.year + " · " + FLOORS[c.floor].no;
+  document.getElementById("panelBlurb").textContent = c.blurb;
+  panel.classList.add("show");
+}
+function closePanel() { panel.classList.remove("show"); }
+document.getElementById("panelClose").addEventListener("click", closePanel);
+
+function updateHotspots() {
+  hotspots.forEach(function (h) {
+    const depth = -h.c.floor * FLOOR_GAP - 3;          // 3D 世界 y（相机上方为远）
+    const a = h.c.angle + vs.fall * 0.02;
+    h.v.set(Math.cos(a) * (RADIUS - 0.6), depth, Math.sin(a) * (RADIUS - 0.6));
+    /* 相机在 y=0 处看世界：世界整体上移了 vs.fall，因此把热点放到世界坐标再随 world 变换 */
+    const world = window.__world;
+    if (!world || !camera) return;
+    h.v.y += vs.fall;                                   // 与阶梯相同的随深度位移
+    const proj = h.v.clone().project(camera);
+    const dist = Math.abs(h.v.y);
+    const visible = proj.z < 1 && dist < 16 && dist > 2.5;
+    h.el.classList.toggle("show", visible && !vs.flying);
+    if (visible) {
+      const x = (proj.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (-proj.y * 0.5 + 0.5) * window.innerHeight;
+      h.el.style.left = x + "px";
+      h.el.style.top = y + "px";
+      const scale = Math.max(0.55, Math.min(1, 9 / dist));
+      h.el.style.transform = "translate(-50%,-50%) scale(" + scale + ")";
+    }
+  });
+}
+
+/* ============================================================
+   深度 HUD
+============================================================ */
+const depthFill = document.getElementById("depthFill");
+const depthReadout = document.getElementById("depthReadout");
+const depthTrack = document.getElementById("depthTrack");
+FLOORS.forEach(function (f, i) {
+  const d = document.createElement("div");
+  d.className = "dot";
+  d.style.left = (i / (FLOORS.length - 1)) * 100 + "%";
+  depthTrack.appendChild(d);
+});
+function updateDepthHud() {
+  depthFill.style.width = (vs.fall / MAX_FALL) * 100 + "%";
+  depthReadout.textContent = (vs.fall * 1.8).toFixed(1) + " m";
+}
+
+/* ============================================================
+   主循环
+============================================================ */
+let t = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  t += 0.016;
+
+  if (vs.flying) {
+    vs.flyT += 0.016 / 1.5;                            // 1.5s 飞行
+    const k = easeInOutCubic(Math.min(1, vs.flyT));
+    vs.fall = vs.flyFrom + (vs.flyTo - vs.flyFrom) * k;
+    vs.target = vs.fall;
+    if (vs.flyT >= 1) {
+      vs.flying = false;
+      hudBtns.forEach(function (b) { b.classList.remove("flying"); });
+    }
+  } else {
+    vs.fall += (vs.target - vs.fall) * 0.07;           // 平滑跟随（lerp）
+  }
+
+  updateFloor();
+  updateDepthHud();
+
+  if (renderer) {
+    const rot = t * 0.05 + vs.fall * 0.012;
+    for (let s = 0; s < steps.length; s++) {
+      const it = steps[s];
+      const yRaw = it.i * RISE + vs.fall;
+      const y = mod(yRaw, SPAN) - SPAN / 2;
+      const a = (yRaw / RISE) * ANGLE_STEP + rot;
+      it.g.position.set(Math.cos(a) * RADIUS, y, Math.sin(a) * RADIUS);
+      it.g.rotation.y = -a;
+    }
+    column.rotation.y = rot;
+    columnWire.rotation.y = rot;
+    helixOuter.rotation.y = rot;
+    helixInner.rotation.y = rot;
+    dust.rotation.y = t * 0.02;
+
+    camera.position.x += (mouseX * 2.0 - camera.position.x) * 0.04;
+    camera.position.y += (-mouseY * 1.2 + Math.sin(t * 0.5) * 0.3 - camera.position.y) * 0.04;
+    camera.lookAt(0, camera.position.y * 0.6, 0);
+
+    updateHotspots();
+    renderer.render(scene, camera);
+  }
+}
+animate();
+
+/* ============================================================
+   Intro：逐词序列
+============================================================ */
+(function intro() {
+  const intro = document.getElementById("intro");
+  const kicker = document.getElementById("introKicker");
+  const ws = document.querySelectorAll("#intro .w");
+  const hint = document.getElementById("introHint");
+  setTimeout(function () { kicker.classList.add("on"); }, 400);
+  ws.forEach(function (el, i) {
+    setTimeout(function () { el.classList.add("on"); }, 900 + i * 260);
+  });
+  setTimeout(function () { hint.classList.add("on"); }, 900 + ws.length * 260 + 300);
+  function go() {
+    intro.classList.add("gone");
+    setTimeout(function () { intro.style.display = "none"; }, 1000);
+  }
+  hint.addEventListener("click", go);
+  window.addEventListener("wheel", function once() {
+    go();
+    window.removeEventListener("wheel", once);
+  }, { passive: true });
+  window.addEventListener("touchmove", function once2() {
+    go();
+    window.removeEventListener("touchmove", once2);
+  }, { passive: true });
+})();
+</script>
+</body>
+</html>
