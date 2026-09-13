@@ -19,12 +19,15 @@
 
 ## 快速开始
 
+无需安装依赖，`server.js` 是一个零依赖的极简静态服务器（Node.js 内置模块实现）：
+
 ```bash
-npm install
-node server.js
+node server.js                # 默认 http://127.0.0.1:7100/
+node server.js --port 8000    # 自定义端口
+node server.js --host 0.0.0.0 # 允许局域网访问
 ```
 
-然后浏览器打开 http://localhost:3000 （端口以 server.js 实际配置为准）。
+浏览器打开终端中显示的地址即可查看网页卡片。
 
 ## 内容说明
 
