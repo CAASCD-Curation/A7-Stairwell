@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>楼梯间：过渡、上升与堕落的垂直空间叙事</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Oswald:wght@200;300;400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f4ede4;
+    --paper-2: #eae0d9;
+    --card: #fffdf9;
+    --ink: #202020;
+    --ink-soft: #55504b;
+    --rose: #c2a9a7;
+    --rose-light: #ffadad;
+    --gold: #f4c890;
+    --red: #da0000;
+    --night: #0e101c;
+    --hairline: rgba(32, 32, 32, 0.16);
+    --serif: "Cormorant Garamond", "Songti SC", "STSong", serif;
+    --sans: "Oswald", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    overflow-x: hidden;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--red); color: var(--paper); }
+
+  /* ===== 3D 背景 ===== */
+  #bg3d { position: fixed; inset: 0; z-index: 0; display: block; }
+  .vignette {
+    position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    background:
+      radial-gradient(ellipse at 50% 42%, transparent 40%, rgba(234, 224, 217, 0.5) 100%),
+      linear-gradient(180deg, rgba(244,237,228,0.9) 0%, rgba(244,237,228,0.15) 22%, rgba(244,237,228,0.1) 70%, rgba(244,237,228,0.85) 100%);
+  }
+  /* 纸面颗粒 */
+  .grain {
+    position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.5;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.5 0 0 0 0 0.45 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .wrapper { position: relative; z-index: 2; }
+
+  /* ===== Hero ===== */
+  header.hero {
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    text-align: center;
+    padding: 0 24px;
+    position: relative;
+  }
+  .hero .kicker {
+    font-family: var(--sans);
+    font-weight: 300;
+    letter-spacing: 0.5em;
+    font-size: 12px;
+    color: var(--red);
+    text-transform: uppercase;
+    margin-bottom: 30px;
+    display: flex; align-items: center; gap: 18px;
+  }
+  .hero .kicker::before, .hero .kicker::after {
+    content: ""; width: 46px; height: 1px; background: var(--rose);
+  }
+  .hero h1 {
+    font-weight: 400;
+    font-size: clamp(34px, 6.4vw, 76px);
+    line-height: 1.28;
+    letter-spacing: 0.02em;
+  }
+  .hero h1 em {
+    font-style: italic;
+    font-weight: 300;
+    color: var(--red);
+  }
+  .hero .sub {
+    margin-top: 30px;
+    font-family: var(--sans);
+    font-weight: 200;
+    color: var(--ink-soft);
+    font-size: 13px;
+    letter-spacing: 0.42em;
+    text-transform: uppercase;
+  }
+  .hero .lede {
+    margin-top: 18px;
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(15px, 1.8vw, 19px);
+    color: var(--ink-soft);
+    max-width: 620px;
+  }
+  .hero .scroll-hint {
+    position: absolute;
+    bottom: 40px; left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--sans);
+    font-weight: 300;
+    color: var(--ink-soft);
+    font-size: 11px;
+    letter-spacing: 0.45em;
+    text-transform: uppercase;
+  }
+  .hero .scroll-hint::after {
+    content: "";
+    display: block;
+    width: 1px; height: 46px;
+    margin: 12px auto 0;
+    background: linear-gradient(180deg, var(--red), transparent);
+    animation: drop 2.2s ease-in-out infinite;
+    transform-origin: top;
+  }
+  @keyframes drop { 0%,100% { transform: scaleY(0.4); opacity: 0.4; } 50% { transform: scaleY(1); opacity: 1; } }
+
+  /* ===== 电梯导航 ===== */
+  .elevator {
+    position: fixed;
+    right: 22px; top: 50%;
+    transform: translateY(-50%);
+    z-index: 50;
+    padding: 18px 8px;
+    background: rgba(255, 253, 249, 0.75);
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 12px 40px rgba(32, 32, 32, 0.1);
+  }
+  .elevator a {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 10px 14px;
+    text-decoration: none;
+    color: var(--ink-soft);
+    transition: color 0.25s;
+    position: relative;
+  }
+  .elevator a + a::before {
+    content: "";
+    position: absolute; top: 0; left: 50%;
+    width: 18px; height: 1px;
+    transform: translateX(-50%);
+    background: var(--hairline);
+  }
+  .elevator a .no {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 17px;
+    font-weight: 500;
+    line-height: 1;
+  }
+  .elevator a .lamp {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: transparent;
+    border: 1px solid var(--rose);
+    transition: all 0.3s;
+  }
+  .elevator a small {
+    display: none;
+    font-family: var(--sans);
+    font-weight: 300;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    writing-mode: vertical-rl;
+  }
+  .elevator a:hover { color: var(--red); }
+  .elevator a.active { color: var(--ink); }
+  .elevator a.active .no { color: var(--red); }
+  .elevator a.active .lamp {
+    background: var(--red);
+    border-color: var(--red);
+    box-shadow: 0 0 10px rgba(218, 0, 0, 0.55);
+  }
+  .elevator:hover a small { display: block; }
+
+  /* ===== 主区 ===== */
+  main { max-width: 1180px; margin: 0 auto; padding: 0 26px 140px; }
+
+  /* ===== 筛选栏 ===== */
+  .filter-bar {
+    position: sticky;
+    top: 14px;
+    z-index: 40;
+    margin: 0 auto 90px;
+    padding: 22px 26px;
+    background: rgba(255, 253, 249, 0.85);
+    border: 1px solid var(--hairline);
+    border-radius: 4px;
+    backdrop-filter: blur(14px);
+    box-shadow: 0 14px 44px rgba(32, 32, 32, 0.09);
+  }
+  .filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+  .filter-row + .filter-row { margin-top: 14px; }
+  .filter-label {
+    font-family: var(--sans);
+    font-weight: 300;
+    font-size: 10.5px;
+    letter-spacing: 0.38em;
+    text-transform: uppercase;
+    color: var(--red);
+    min-width: 74px;
+  }
+  .search-box { flex: 1; min-width: 220px; position: relative; }
+  .search-box input {
+    width: 100%;
+    padding: 11px 14px 11px 40px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--hairline);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 16px;
+    outline: none;
+    transition: border 0.25s;
+  }
+  .search-box input::placeholder { color: rgba(85, 80, 75, 0.55); }
+  .search-box input:focus { border-bottom-color: var(--red); }
+  .search-box::before {
+    content: "—";
+    position: absolute;
+    left: 12px; top: 50%;
+    transform: translateY(-54%);
+    color: var(--red);
+    font-family: var(--sans);
+  }
+  .result-count {
+    font-family: var(--sans);
+    font-weight: 300;
+    font-size: 11px;
+    color: var(--ink-soft);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .result-count b { color: var(--red); font-weight: 400; }
+  .chip {
+    font-family: var(--sans);
+    font-weight: 300;
+    padding: 7px 16px;
+    border-radius: 999px;
+    border: 1px solid var(--hairline);
+    background: transparent;
+    color: var(--ink-soft);
+    font-size: 11.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.25s;
+    user-select: none;
+  }
+  .chip:hover { border-color: var(--ink); color: var(--ink); }
+  .chip.on {
+    color: var(--paper);
+    background: var(--ink);
+    border-color: var(--ink);
+  }
+  .chip.rose.on { background: var(--red); border-color: var(--red); }
+
+  /* ===== 楼层区块 ===== */
+  .floor { margin-bottom: 130px; scroll-margin-top: 140px; }
+  .floor-head {
+    display: flex; align-items: baseline; gap: 22px; flex-wrap: wrap;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--hairline);
+    padding-bottom: 18px;
+  }
+  .floor-head .no {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(44px, 6vw, 72px);
+    line-height: 0.9;
+    color: transparent;
+    -webkit-text-stroke: 1px var(--rose);
+  }
+  .floor.alt .floor-head .no { -webkit-text-stroke: 1px var(--red); }
+  .floor-head h2 {
+    font-weight: 400;
+    font-size: clamp(24px, 3.4vw, 38px);
+    letter-spacing: 0.1em;
+  }
+  .floor-head .en {
+    font-family: var(--sans);
+    font-weight: 200;
+    color: var(--ink-soft);
+    font-size: 11px;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+  }
+  .floor-quote {
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(16px, 2vw, 21px);
+    color: var(--ink-soft);
+    margin-bottom: 14px;
+    max-width: 680px;
+  }
+  .floor-quote::before { content: "“"; color: var(--red); margin-right: 2px; }
+  .floor-quote::after { content: "”"; color: var(--red); margin-left: 2px; }
+  .floor-desc {
+    font-family: var(--sans);
+    font-weight: 300;
+    color: var(--ink-soft);
+    font-size: 12.5px;
+    letter-spacing: 0.14em;
+    margin-bottom: 40px;
+    max-width: 640px;
+  }
+
+  /* ===== 卡片 ===== */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 26px;
+    perspective: 1400px;
+  }
+  .card {
+    position: relative;
+    border-radius: 4px;
+    padding: 30px 28px 26px;
+    background: linear-gradient(165deg, #fffdf9 0%, #f7efe6 100%);
+    border: 1px solid rgba(32, 32, 32, 0.1);
+    box-shadow: 0 2px 6px rgba(32, 32, 32, 0.05);
+    overflow: hidden;
+    transform-style: preserve-3d;
+    transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.3, 1), box-shadow 0.35s, border-color 0.35s;
+    will-change: transform;
+  }
+  .card.hidden { display: none; }
+  .card::before { /* 暖金光泽 */
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at var(--gx, 50%) var(--gy, 50%), rgba(244, 200, 144, 0.35), transparent 55%);
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  .card:hover::before { opacity: 1; }
+  .card::after { /* 绸面扫光 */
+    content: "";
+    position: absolute;
+    top: 0; left: -80%;
+    width: 55%; height: 100%;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+    transform: skewX(-18deg);
+    transition: left 0.65s;
+    pointer-events: none;
+  }
+  .card:hover::after { left: 130%; }
+  .card:hover {
+    border-color: rgba(218, 0, 0, 0.35);
+    box-shadow: 0 26px 54px rgba(32, 32, 32, 0.14);
+  }
+  .card .tags { display: flex; gap: 8px; margin-bottom: 20px; transform: translateZ(30px); }
+  .tag {
+    font-family: var(--sans);
+    font-weight: 300;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    padding: 4px 11px;
+    border-radius: 999px;
+  }
+  .tag.media { color: #8a6a3a; border: 1px solid rgba(244, 200, 144, 0.9); background: rgba(244, 200, 144, 0.22); }
+  .tag.form  { color: var(--red); border: 1px solid rgba(218, 0, 0, 0.35); background: rgba(218, 0, 0, 0.05); }
+  .card h3 {
+    font-weight: 500;
+    font-size: 22px;
+    letter-spacing: 0.03em;
+    line-height: 1.35;
+    margin-bottom: 8px;
+    transform: translateZ(24px);
+  }
+  .card .meta {
+    font-family: var(--sans);
+    font-weight: 300;
+    color: var(--ink-soft);
+    font-size: 11.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    transform: translateZ(18px);
+  }
+  .card .meta b { color: var(--ink); font-weight: 400; }
+  .card p.blurb {
+    font-weight: 300;
+    font-size: 14.5px;
+    color: var(--ink-soft);
+    transform: translateZ(12px);
+  }
+  .card .year {
+    position: absolute;
+    right: 18px; top: 12px;
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 300;
+    font-size: 30px;
+    color: transparent;
+    -webkit-text-stroke: 1px rgba(32, 32, 32, 0.25);
+    transform: translateZ(10px);
+  }
+  .empty-tip {
+    display: none;
+    text-align: center;
+    font-style: italic;
+    color: var(--ink-soft);
+    padding: 60px 0;
+    letter-spacing: 0.15em;
+    grid-column: 1 / -1;
+  }
+  .empty-tip.show { display: block; }
+
+  footer {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    padding: 70px 20px 80px;
+    background: var(--night);
+    color: rgba(254, 242, 234, 0.6);
+    font-family: var(--sans);
+    font-weight: 200;
+    font-size: 11px;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+  }
+  footer .f-title {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(22px, 3vw, 34px);
+    letter-spacing: 0.05em;
+    text-transform: none;
+    color: #fef2ea;
+    margin-bottom: 18px;
+  }
+  footer .f-title em { color: var(--rose-light); }
+  footer b { color: var(--rose-light); font-weight: 400; }
+
+  /* ===== 响应式 ===== */
+  @media (max-width: 720px) {
+    .elevator { right: 10px; padding: 12px 5px; }
+    .elevator a { padding: 8px 10px; }
+    .elevator a .no { font-size: 14px; }
+    main { padding: 0 16px 120px; }
+    .filter-bar { padding: 16px; }
+    .filter-label { min-width: auto; }
+    .floor { scroll-margin-top: 170px; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bg3d"></canvas>
+<div class="vignette"></div>
+<div class="grain"></div>
+
+<nav class="elevator" id="elevator" aria-label="楼层导航">
+  <a href="#f-b2" data-floor="f-b2"><span class="no">B2</span><span class="lamp"></span><small>心理·惊悚</small></a>
+  <a href="#f-b1" data-floor="f-b1"><span class="no">B1</span><span class="lamp"></span><small>阶级·秩序</small></a>
+  <a href="#f-gf" data-floor="f-gf"><span class="no">GF</span><span class="lamp"></span><small>社区·日常</small></a>
+  <a href="#f-1f" data-floor="f-1f"><span class="no">1F</span><span class="lamp"></span><small>迷宫·错觉</small></a>
+  <a href="#f-2f" data-floor="f-2f"><span class="no">2F</span><span class="lamp"></span><small>形式·解构</small></a>
+</nav>
+
+<div class="wrapper">
+  <header class="hero">
+    <div class="kicker">A Vertical Love Letter to Stairwells</div>
+    <h1>楼梯间：过渡、上升<br>与<em>堕落</em>的垂直空间叙事</h1>
+    <div class="sub">Transition · Ascent · Fall — An Interactive Archive</div>
+    <p class="lede">每一级台阶都是一次呼吸的停顿，每一段楼梯都是一场未完成的告白。</p>
+    <div class="scroll-hint">Scroll to descend</div>
+  </header>
+
+  <main>
+    <!-- 筛选栏 -->
+    <section class="filter-bar">
+      <div class="filter-row">
+        <span class="filter-label">Search</span>
+        <div class="search-box">
+          <input id="searchInput" type="text" placeholder="搜索案例标题或作者……（如：埃舍尔 / 寄生虫）" autocomplete="off">
+        </div>
+        <span class="result-count" id="resultCount"></span>
+      </div>
+      <div class="filter-row">
+        <span class="filter-label">媒介</span>
+        <button class="chip on" data-group="media" data-val="all">全部</button>
+        <button class="chip" data-group="media" data-val="电影">电影</button>
+        <button class="chip" data-group="media" data-val="建筑">建筑</button>
+        <button class="chip" data-group="media" data-val="艺术">艺术</button>
+        <button class="chip" data-group="media" data-val="聚落/社会">聚落/社会</button>
+        <button class="chip" data-group="media" data-val="文学">文学</button>
+        <button class="chip" data-group="media" data-val="游戏">游戏</button>
+      </div>
+      <div class="filter-row">
+        <span class="filter-label">空间形态</span>
+        <button class="chip rose on" data-group="form" data-val="all">全部</button>
+        <button class="chip rose" data-group="form" data-val="螺旋梯">螺旋梯</button>
+        <button class="chip rose" data-group="form" data-val="折梯">折梯</button>
+        <button class="chip rose" data-group="form" data-val="无限梯">无限梯</button>
+        <button class="chip rose" data-group="form" data-val="消防梯">消防梯</button>
+      </div>
+    </section>
+
+    <!-- B2F 心理与惊悚 -->
+    <section class="floor" id="f-b2">
+      <div class="floor-head"><span class="no">B2F</span><h2>心理与惊悚</h2><span class="en">Psychology &amp; Suspense</span></div>
+      <p class="floor-quote">在楼梯间里，每一声脚步都先于你到达。</p>
+      <p class="floor-desc">垂直空间中最幽闭的一层：楼梯间成为窥视、追踪与心理压迫的舞台，每一级台阶都是悬念的节拍器。</p>
+      <div class="grid" data-floor-grid="f-b2"><div class="empty-tip">—— 该楼层暂无匹配案例 ——</div></div>
+    </section>
+
+    <!-- B1F 阶级与秩序 -->
+    <section class="floor alt" id="f-b1">
+      <div class="floor-head"><span class="no">B1F</span><h2>阶级与秩序</h2><span class="en">Class &amp; Order</span></div>
+      <p class="floor-quote">向上是仰仗，向下是俯视；楼梯从不撒谎。</p>
+      <p class="floor-desc">楼梯作为社会分层的垂直标尺，丈量着上升的欲望与堕落的代价。</p>
+      <div class="grid" data-floor-grid="f-b1"><div class="empty-tip">—— 该楼层暂无匹配案例 ——</div></div>
+    </section>
+
+    <!-- GF 社区与日常 -->
+    <section class="floor" id="f-gf">
+      <div class="floor-head"><span class="no">GF</span><h2>社区与日常</h2><span class="en">Community &amp; Everyday Life</span></div>
+      <p class="floor-quote">在缝隙里，人们用铁梯种出一座城。</p>
+      <p class="floor-desc">高密度聚落中的非正式垂直交通：自建楼梯像藤蔓一样在楼缝中生长，构成蜂巢般的日常生活肌理。</p>
+      <div class="grid" data-floor-grid="f-gf"><div class="empty-tip">—— 该楼层暂无匹配案例 ——</div></div>
+    </section>
+
+    <!-- 1F 迷宫与视错觉 -->
+    <section class="floor alt" id="f-1f">
+      <div class="floor-head"><span class="no">1F</span><h2>迷宫与视错觉</h2><span class="en">Maze &amp; Optical Illusion</span></div>
+      <p class="floor-quote">当重力失去方向，循环便成了永恒。</p>
+      <p class="floor-desc">当重力失去方向，楼梯便不再是通道而是悖论。不可能图形与折叠空间在此层循环往复、无始无终。</p>
+      <div class="grid" data-floor-grid="f-1f"><div class="empty-tip">—— 该楼层暂无匹配案例 ——</div></div>
+    </section>
+
+    <!-- 2F 形式与解构 -->
+    <section class="floor" id="f-2f">
+      <div class="floor-head"><span class="no">2F</span><h2>形式与解构</h2><span class="en">Form &amp; Deconstruction</span></div>
+      <p class="floor-quote">把楼梯拆开，剩下的只有运动本身。</p>
+      <p class="floor-desc">楼梯被还原为纯粹的形式实验：螺旋、悬挑、连续运动——建筑与艺术在此互相解构、彼此生成。</p>
+      <div class="grid" data-floor-grid="f-2f"><div class="empty-tip">—— 该楼层暂无匹配案例 ——</div></div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="f-title">不要等到最后一刻，<br>才说出你对一座<em>楼梯</em>的爱。</div>
+    STAIRWELL · <b>过渡 — 上升 — 堕落</b> · A SINGLE-FILE INTERACTIVE EXHIBITION © 2026
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+   数据层：案例数据库
+============================================================ */
+const CASES = [
+  {
+    id: 1, title: "《寄生虫》", year: "2019", author: "奉俊昊",
+    floor: "f-b1", floorLabel: "B1F 阶级与秩序",
+    media: "电影", form: "折梯",
+    blurb: "豪宅的长阶与半地下室的逼仄楼梯构成垂直阶级地图，一场暴雨让上升者沿台阶急速坠落。"
+  },
+  {
+    id: 2, title: "《盗梦空间》", year: "2010", author: "克里斯托弗·诺兰",
+    floor: "f-1f", floorLabel: "1F 迷宫与视错觉",
+    media: "电影", form: "无限梯",
+    blurb: "彭罗斯阶梯被折叠进梦境：特工在循环上升的梯井中追逐，垂直方向成为可编程的迷宫。"
+  },
+  {
+    id: 3, title: "《相对性》", year: "1953", author: "M.C. 埃舍尔",
+    floor: "f-1f", floorLabel: "1F 迷宫与视错觉",
+    media: "艺术", form: "无限梯",
+    blurb: "三组各自拥有重力的人物在三座楼梯的交界处错身而过——不可能建筑的视觉圣经。"
+  },
+  {
+    id: 4, title: "香波堡双螺旋楼梯", year: "1519", author: "达·芬奇（传）",
+    floor: "f-2f", floorLabel: "2F 形式与解构",
+    media: "建筑", form: "螺旋梯",
+    blurb: "两条螺旋共轴交叠，同行者可在梯间窥见彼此却永不相逢——法兰西文艺复兴的空间机关。"
+  },
+  {
+    id: 5, title: "九龙寨城「迷宫梯井」", year: "1980s", author: "无名自建聚落",
+    floor: "f-gf", floorLabel: "GF 社区与日常",
+    media: "聚落/社会", form: "折梯",
+    blurb: "0.026 平方公里内五万人共用一套失控的垂直系统：铁梯、木梯与混凝土梯在黑暗中层层咬合。"
+  },
+  {
+    id: 6, title: "《后窗》消防梯", year: "1954", author: "阿尔弗雷德·希区柯克",
+    floor: "f-b2", floorLabel: "B2F 心理与惊悚",
+    media: "电影", form: "消防梯",
+    blurb: "格林威治村的消防梯是窥视者的通道，也是凶手潜入的垂直甬道——悬念在悬空的台阶上摇晃。"
+  },
+  {
+    id: 7, title: "《下楼梯的裸女 No.2》", year: "1912", author: "马塞尔·杜尚",
+    floor: "f-2f", floorLabel: "2F 形式与解构",
+    media: "艺术", form: "折梯",
+    blurb: "连续摄影式的动态叠加：裸体不再是肉身的描绘，而成为沿阶梯下降的运动轨迹本身。"
+  },
+  {
+    id: 8, title: "《小丑》狂欢台阶", year: "2019", author: "托德·菲利普斯",
+    floor: "f-b1", floorLabel: "B1F 阶级与秩序",
+    media: "电影", form: "折梯",
+    blurb: "从歌舞伎町台阶的舞蹈到厨房通道的俯拍长镜：台阶成为阶级倾覆与个人加冕的双重仪式场。"
+  }
+];
+
+/* ============================================================
+   渲染：按楼层填充卡片
+============================================================ */
+function renderCards() {
+  CASES.forEach(function (c) {
+    const grid = document.querySelector('[data-floor-grid="' + c.floor + '"]');
+    if (!grid) return;
+    const el = document.createElement("article");
+    el.className = "card";
+    el.dataset.media = c.media;
+    el.dataset.form = c.form;
+    el.dataset.search = (c.title + " " + c.author).toLowerCase();
+    el.innerHTML =
+      '<span class="year">' + c.year + '</span>' +
+      '<div class="tags"><span class="tag media">' + c.media + '</span><span class="tag form">' + c.form + '</span></div>' +
+      '<h3>' + c.title + '</h3>' +
+      '<div class="meta"><b>' + c.author + '</b> · ' + c.floorLabel + '</div>' +
+      '<p class="blurb">' + c.blurb + '</p>';
+    grid.insertBefore(el, grid.querySelector(".empty-tip"));
+  });
+}
+renderCards();
+
+/* ============================================================
+   筛选与搜索
+============================================================ */
+const state = { q: "", media: "all", form: "all" };
+const searchInput = document.getElementById("searchInput");
+const resultCount = document.getElementById("resultCount");
+
+function applyFilters() {
+  let visible = 0;
+  document.querySelectorAll(".card").forEach(function (card) {
+    const okQ = !state.q || card.dataset.search.indexOf(state.q) !== -1;
+    const okM = state.media === "all" || card.dataset.media === state.media;
+    const okF = state.form === "all" || card.dataset.form === state.form;
+    const show = okQ && okM && okF;
+    card.classList.toggle("hidden", !show);
+    if (show) visible++;
+  });
+  document.querySelectorAll(".grid").forEach(function (grid) {
+    const any = Array.prototype.some.call(grid.querySelectorAll(".card"), function (c) {
+      return !c.classList.contains("hidden");
+    });
+    grid.querySelector(".empty-tip").classList.toggle("show", !any);
+  });
+  resultCount.innerHTML = "匹配 <b>" + visible + "</b> / " + CASES.length + " 个案例";
+}
+
+searchInput.addEventListener("input", function () {
+  state.q = this.value.trim().toLowerCase();
+  applyFilters();
+});
+
+document.querySelectorAll(".chip").forEach(function (chip) {
+  chip.addEventListener("click", function () {
+    const group = this.dataset.group;
+    document.querySelectorAll('.chip[data-group="' + group + '"]').forEach(function (c) {
+      c.classList.remove("on");
+    });
+    this.classList.add("on");
+    state[group] = this.dataset.val;
+    applyFilters();
+  });
+});
+applyFilters();
+
+/* ============================================================
+   卡片 3D 倾斜（Tilt）+ 光泽跟随
+============================================================ */
+document.querySelectorAll(".card").forEach(function (card) {
+  card.addEventListener("mousemove", function (e) {
+    const r = card.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width;
+    const py = (e.clientY - r.top) / r.height;
+    const rx = (0.5 - py) * 8;
+    const ry = (px - 0.5) * 10;
+    card.style.transform = "rotateX(" + rx + "deg) rotateY(" + ry + "deg) translateY(-5px)";
+    card.style.setProperty("--gx", px * 100 + "%");
+    card.style.setProperty("--gy", py * 100 + "%");
+  });
+  card.addEventListener("mouseleave", function () {
+    card.style.transform = "";
+  });
+});
+
+/* ============================================================
+   电梯导航：高亮当前楼层
+============================================================ */
+const floorIds = ["f-b2", "f-b1", "f-gf", "f-1f", "f-2f"];
+const navLinks = document.querySelectorAll("#elevator a");
+
+function updateElevator() {
+  const probe = window.innerHeight * 0.38;
+  let current = floorIds[0];
+  floorIds.forEach(function (id) {
+    const sec = document.getElementById(id);
+    if (sec && sec.getBoundingClientRect().top <= probe) current = id;
+  });
+  navLinks.forEach(function (a) {
+    a.classList.toggle("active", a.dataset.floor === current);
+  });
+}
+window.addEventListener("scroll", updateElevator, { passive: true });
+window.addEventListener("resize", updateElevator);
+updateElevator();
+
+/* ============================================================
+   Three.js：无限垂直梯井（暖色纸面版）
+============================================================ */
+(function initThree() {
+  if (typeof THREE === "undefined") {
+    document.getElementById("bg3d").style.background =
+      "radial-gradient(circle at 50% 30%, #efe4d6 0%, #f4ede4 70%)";
+    return;
+  }
+
+  const canvas = document.getElementById("bg3d");
+  const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x000000, 0);
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0xf4ede4, 0.042);
+
+  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 200);
+  camera.position.set(0, 0, 11);
+
+  /* ---- 灯光（暖纸面氛围） ---- */
+  scene.add(new THREE.AmbientLight(0xfff2e0, 0.95));
+  const dirLight = new THREE.DirectionalLight(0xfff5ea, 1.15);
+  dirLight.position.set(6, 10, 8);
+  scene.add(dirLight);
+  const redLight = new THREE.PointLight(0xda0000, 1.1, 40);
+  redLight.position.set(-6, -2, 6);
+  scene.add(redLight);
+  const goldLight = new THREE.PointLight(0xf4c890, 1.2, 34);
+  goldLight.position.set(5, 4, 5);
+  scene.add(goldLight);
+
+  const world = new THREE.Group();
+  scene.add(world);
+
+  /* ---- 阶梯参数 ---- */
+  const STEP_COUNT = 110;
+  const RISE = 0.34;
+  const ANGLE_STEP = 0.42;
+  const SPAN = STEP_COUNT * RISE;
+  const RADIUS = 4.6;
+
+  const stepGeo = new THREE.BoxGeometry(2.6, 0.09, 1.15);
+  const stepMat = new THREE.MeshStandardMaterial({
+    color: 0xd9c4b2, metalness: 0.55, roughness: 0.45,
+    emissive: 0xc2a9a7, emissiveIntensity: 0.12
+  });
+  const edgeMat = new THREE.MeshStandardMaterial({
+    color: 0xf7efe6, metalness: 0.6, roughness: 0.3,
+    emissive: 0xda0000, emissiveIntensity: 0.5
+  });
+
+  const steps = [];
+  for (let i = 0; i < STEP_COUNT; i++) {
+    const g = new THREE.Group();
+    const box = new THREE.Mesh(stepGeo, stepMat);
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.04, 0.06), edgeMat);
+    edge.position.z = 0.58;
+    g.add(box); g.add(edge);
+    world.add(g);
+    steps.push({ g: g, i: i });
+  }
+
+  /* ---- 中央立柱（线框） ---- */
+  const columnGeo = new THREE.CylinderGeometry(0.55, 0.55, SPAN, 12, 24, true);
+  const column = new THREE.LineSegments(
+    new THREE.WireframeGeometry(columnGeo),
+    new THREE.LineBasicMaterial({ color: 0xc2a9a7, transparent: true, opacity: 0.3 })
+  );
+  world.add(column);
+
+  /* ---- 双螺旋扶手线 ---- */
+  function makeHelix(radius, color, opacity, phase) {
+    const pts = [];
+    const total = 900;
+    for (let k = 0; k <= total; k++) {
+      const t = (k / total) * SPAN;
+      const a = (t / RISE) * ANGLE_STEP + phase;
+      pts.push(new THREE.Vector3(Math.cos(a) * radius, t - SPAN / 2, Math.sin(a) * radius));
+    }
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    return new THREE.Line(geo, new THREE.LineBasicMaterial({
+      color: color, transparent: true, opacity: opacity
+    }));
+  }
+  const helixOuter = makeHelix(RADIUS + 0.2, 0xda0000, 0.32, 0);
+  const helixInner = makeHelix(RADIUS - 1.9, 0xc2a9a7, 0.4, Math.PI);
+  const columnWire = makeHelix(0.55, 0x8a7a72, 0.22, 0);
+  world.add(helixOuter);
+  world.add(helixInner);
+  world.add(columnWire);
+
+  /* ---- 漂浮尘埃粒子 ---- */
+  const pCount = 420;
+  const pGeo = new THREE.BufferGeometry();
+  const pPos = new Float32Array(pCount * 3);
+  for (let k = 0; k < pCount; k++) {
+    pPos[k * 3] = (Math.random() - 0.5) * 24;
+    pPos[k * 3 + 1] = (Math.random() - 0.5) * SPAN;
+    pPos[k * 3 + 2] = (Math.random() - 0.5) * 24;
+  }
+  pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
+  const dust = new THREE.Points(pGeo, new THREE.PointsMaterial({
+    color: 0xda0000, size: 0.06, transparent: true, opacity: 0.4
+  }));
+  world.add(dust);
+
+  /* ---- 交互状态 ---- */
+  let mouseX = 0, mouseY = 0;
+  let scrollTarget = 0, scrollSmooth = 0;
+
+  window.addEventListener("mousemove", function (e) {
+    mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+    mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+  });
+  function readScroll() {
+    const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+    scrollTarget = (window.scrollY / max) * SPAN * 2.4;
+  }
+  window.addEventListener("scroll", readScroll, { passive: true });
+  readScroll();
+
+  /* ---- 自适应 ---- */
+  window.addEventListener("resize", function () {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  /* ---- 动画循环 ---- */
+  let t = 0;
+  function mod(n, m) { return ((n % m) + m) % m; }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    t += 0.016;
+    scrollSmooth += (scrollTarget - scrollSmooth) * 0.05;
+
+    const fall = t * 0.55 + scrollSmooth;
+    const rot = t * 0.06 + scrollSmooth * 0.12;
+
+    for (let s = 0; s < steps.length; s++) {
+      const it = steps[s];
+      const yRaw = it.i * RISE + fall;
+      const y = mod(yRaw, SPAN) - SPAN / 2;
+      const a = (yRaw / RISE) * ANGLE_STEP + rot;
+      it.g.position.set(Math.cos(a) * RADIUS, y, Math.sin(a) * RADIUS);
+      it.g.rotation.y = -a;
+    }
+
+    column.rotation.y = rot;
+    columnWire.rotation.y = rot;
+    helixOuter.rotation.y = rot;
+    helixInner.rotation.y = rot;
+
+    dust.rotation.y = t * 0.02;
+
+    camera.position.x += (mouseX * 2.2 - camera.position.x) * 0.04;
+    camera.position.y += (-mouseY * 1.4 + Math.sin(t * 0.5) * 0.35 - camera.position.y) * 0.04;
+    camera.lookAt(0, camera.position.y * 0.6, 0);
+
+    redLight.position.x = Math.cos(t * 0.4) * 7;
+    redLight.position.z = Math.sin(t * 0.4) * 7;
+
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+</script>
+</body>
+</html>
