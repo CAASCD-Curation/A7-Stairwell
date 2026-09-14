@@ -2,6 +2,13 @@
 
 以「楼梯间」为主题的策展项目：一个网页展示卡片 + 一份调研文档与图片资料库。
 
+## 在线体验（Live Demo）
+
+网站搭建案例的两种形式（Netlify 部署，对应 `stairs-preview/` 中的预览页面）：
+
+- **旋转楼梯 Demo**：https://friendly-pixie-21b0e8.netlify.app
+- **立体楼梯 Demo**：https://celadon-phoenix-772e72.netlify.app
+
 ## 项目结构
 
 ```
